@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat App</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+    />
+  </head>
+  <body class="bg-gray-100">
+    <div class="flex">
+      <!-- Chat Area -->
+      <div class="w-2/3">
+        <!-- Keep the existing chat area here -->
+      </div>
+    </div>
+    <div class="max-w-xl mx-auto mt-10 p-5 bg-white rounded shadow">
+      <h1 class="text-2xl font-bold text-center text-blue-500 mb-4">
+        Chat Application
+      </h1>
+
+      <!-- Registration Form -->
+      <div id="registerArea" class="mb-5">
+        <label class="block mb-2 text-gray-700 font-medium"
+          >Enter Your User ID:</label
+        >
+        <input type="text" id="userId" class="w-full border rounded p-2 mb-4" />
+        <button
+          id="registerBtn"
+          class="bg-blue-500 text-white py-2 px-4 rounded w-full"
+        >
+          Register
+        </button>
+      </div>
+
+      <!-- Chat Area -->
+      <div id="chatArea" class="hidden">
+        <div
+          id="messages"
+          class="overflow-y-auto h-64 border p-3 mb-4 bg-gray-50"
+        ></div>
+
+        <label class="block mb-2 text-gray-700 font-medium"
+          >Recipient User ID:</label
+        >
+        <input
+          type="text"
+          id="recipientId"
+          class="w-full border rounded p-2 mb-4"
+        />
+
+        <div id="recipientsList" class="mb-4">
+          <h2 class="text-lg font-medium text-gray-700 mb-2">Recipients:</h2>
+          <ul class="list-disc pl-5 text-gray-700"></ul>
+        </div>
+
+        <label class="block mb-2 text-gray-700 font-medium">Message:</label>
+        <textarea
+          id="messageInput"
+          class="w-full border rounded p-2 mb-4"
+          rows="3"
+        ></textarea>
+
+        <button
+          id="sendMessageBtn"
+          class="bg-green-500 text-white py-2 px-4 rounded w-full"
+        >
+          Send Message
+        </button>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script type="module">
+      // Import the necessary functions from Firebase SDKs
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js";
+      import {
+        getMessaging,
+        getToken,
+        onMessage,
+      } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging.js";
+
+      // Your web app's Firebase configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyBrMY2ikf63p5LX0LZwd7SlzOLwPB1cKns",
+        authDomain: "chat-app-2f158.firebaseapp.com",
+        projectId: "chat-app-2f158",
+        storageBucket: "chat-app-2f158.appspot.com",
+        messagingSenderId: "493786510903",
+        appId: "1:493786510903:web:e274620381f94b5472f1b2",
+        measurementId: "G-5T0WL3PMR1",
+      };
+
+      let token = "";
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+
+      // Initialize Firebase Cloud Messaging
+      const messaging = getMessaging(app);
+
+      // Register service worker for Firebase Messaging
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker
+          .register("/firebase-messaging-sw.js") // Path to your service worker
+          .then((registration) => {
+            console.log("Service Worker registered:", registration);
+
+            // Request permission and get the FCM token
+            getFCMToken();
+          })
+          .catch((error) => {
+            console.error("Service Worker registration failed:", error);
+          });
+      }
+
+      // Function to get the FCM token
+      async function getFCMToken() {
+        try {
+          token = await getToken(messaging, {
+            vapidKey:
+              "BNVtTkmgb5gO9lCsCUL5JfIRnCXeH2s0HbhY2q4HcA43uULUlQ5KDCbKSKL146mKlCE_jqEP-VlNSG1E5Fyk87M", // Replace with your VAPID key from Firebase Console
+          });
+          if (token) {
+            console.log("FCM Token:", token);
+            // Send the token to your server along with the userId and socketId
+          } else {
+            console.error("No registration token available.");
+          }
+        } catch (error) {
+          console.error("Error retrieving FCM token:", error);
+        }
+      }
+
+      // Handle incoming messages
+      onMessage(messaging, (payload) => {
+        console.log("Message received: ", payload);
+        const { title, body } = payload.notification;
+        // Display notification
+        new Notification(title, { body });
+      });
+
+      const socket = io("http://localhost:5000");
+
+      // Elements
+      const registerArea = document.getElementById("registerArea");
+      const chatArea = document.getElementById("chatArea");
+      const userIdInput = document.getElementById("userId");
+      const registerBtn = document.getElementById("registerBtn");
+      const messagesDiv = document.getElementById("messages");
+      const recipientIdInput = document.getElementById("recipientId");
+      const messageInput = document.getElementById("messageInput");
+      const sendMessageBtn = document.getElementById("sendMessageBtn");
+      const recipientsList = document.getElementById("recipientsList"); // Recipients list container
+
+      let currentUserId = "";
+
+      // Register User
+      registerBtn.addEventListener("click", () => {
+        const userId = userIdInput.value.trim();
+        if (token === "" || token === null) {
+          alert("FCM Token is not available. Please try again.");
+          return;
+        }
+        if (userId) {
+          currentUserId = userId;
+          // Store User ID in localStorage
+          // localStorage.setItem("userId", userId);
+
+          // Register the user with socketId and token
+          socket.emit("register", {
+            userId: userId,
+            socketId: socket.id, // Getting socket ID from the connection
+            token: token, // Firebase token
+          });
+          alert("Registered successfully!");
+          registerArea.classList.add("hidden");
+          chatArea.classList.remove("hidden");
+
+          // Fetch recipients for the current user
+          fetchRecipients(userId);
+        } else {
+          alert("Please enter a valid User ID.");
+        }
+      });
+
+      // Fetch recipients for the current user
+      function fetchRecipients(userId) {
+        fetch(`/getRecipients?userId=${userId}`)
+          .then((response) => response.json())
+          .then((recipients) => {
+            const listContainer = recipientsList.querySelector("ul");
+            listContainer.innerHTML = ""; // Clear existing recipients
+
+            if (recipients.length === 0) {
+              listContainer.innerHTML = "<li>No recipients found.</li>";
+              return;
+            }
+
+            recipients.forEach((recipientId) => {
+              const listItem = document.createElement("li");
+              listItem.textContent = recipientId;
+              listItem.classList.add(
+                "cursor-pointer",
+                "hover:underline",
+                "text-blue-500"
+              );
+              listItem.addEventListener("click", () => {
+                recipientIdInput.value = recipientId; // Set the recipient input
+                fetchMessages(currentUserId, recipientId); // Fetch messages with the recipient
+              });
+              listContainer.appendChild(listItem);
+            });
+          })
+          .catch((err) => {
+            console.error("Error fetching recipients:", err);
+          });
+      }
+
+      // Fetch messages between two users
+      function fetchMessages(userId1, userId2) {
+        fetch(`/getMessages?userId1=${userId1}&userId2=${userId2}`)
+          .then((response) => response.json())
+          .then((messages) => {
+            messagesDiv.innerHTML = ""; // Clear existing messages
+            messages.forEach((msg) => {
+              const messageElement = document.createElement("div");
+              messageElement.classList.add(
+                "p-2",
+                "mb-2",
+                "bg-gray-200",
+                "rounded"
+              );
+
+              const time = new Date(msg.timestamp).toLocaleTimeString();
+              messageElement.innerHTML = `
+                    <strong>${msg.from}:</strong> ${msg.content} <br>
+                    <span class="text-xs text-gray-500">${time}</span>
+                  `;
+
+              messagesDiv.appendChild(messageElement);
+            });
+            messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
+          });
+      }
+
+      function addMessageToChat({ from, content, timestamp }) {
+        const chatbox = document.getElementById("chatbox"); // Replace with your chatbox container ID
+        const messageElement = document.createElement("div");
+
+        messageElement.className = "message"; // Add appropriate styling class
+        messageElement.innerHTML = `
+        <strong>${from}:</strong> ${content}
+        <span class="timestamp">${new Date(
+          timestamp
+        ).toLocaleTimeString()}</span>
+    `;
+
+        chatbox.appendChild(messageElement);
+        chatbox.scrollTop = chatbox.scrollHeight; // Auto-scroll to the bottom
+      }
+
+      socket.on("connect", () => {
+        console.log("Socket connected with ID:", socket.id); // Should log socket ID
+      });
+      socket.on("disconnect", () => {
+        console.log("Socket disconnected");
+      });
+      // Handle incoming messages
+      socket.on("message", (msg) => {
+        console.log("Message receiveds:", msg); // Debugging log
+        // addMessageToChat(data); // Call function to update chat UI
+        const { from, content, timestamp } = msg;
+        const messageElement = document.createElement("div");
+        messageElement.classList.add("p-2", "mb-2", "bg-gray-200", "rounded");
+
+        const time = new Date(timestamp).toLocaleTimeString();
+        messageElement.innerHTML = `
+              <strong>${from}:</strong> ${content} <br>
+              <span class="text-xs text-gray-500">${time}</span>
+            `;
+
+        messagesDiv.appendChild(messageElement);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
+        //console.log("Appened!")
+      });
+
+      // Send Message
+      sendMessageBtn.addEventListener("click", () => {
+        const recipientId = recipientIdInput.value.trim();
+        const messageContent = messageInput.value.trim();
+
+        if (recipientId && messageContent) {
+          // Emit the message to the backend
+          socket.emit("sendMessage", {
+            from: currentUserId,
+            token: token,
+            to: recipientId,
+            content: messageContent,
+          });
+
+          // Append your own message to the chat
+          const ownMessageElement = document.createElement("div");
+          ownMessageElement.classList.add(
+            "p-2",
+            "mb-2",
+            "bg-blue-100",
+            "rounded",
+            "self-end"
+          );
+          const time = new Date().toLocaleTimeString();
+          ownMessageElement.innerHTML = `
+                <strong>You:</strong> ${messageContent} <br>
+                <span class="text-xs text-gray-500">${time}</span>
+              `;
+          messagesDiv.appendChild(ownMessageElement);
+
+          // Clear the input field
+          messageInput.value = "";
+          messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
+        } else {
+          alert("Please fill in both fields.");
+        }
+      });
+
+      // On recipient change, fetch messages
+      recipientIdInput.addEventListener("blur", () => {
+        const recipientId = recipientIdInput.value.trim();
+        if (recipientId) {
+          fetchMessages(currentUserId, recipientId);
+        }
+      });
+
+      // Fetch recipients on page load if userId exists
+      window.addEventListener("load", () => {
+        const storedUserId = localStorage.getItem("userId");
+        if (storedUserId) {
+          currentUserId = storedUserId;
+          userIdInput.value = storedUserId;
+          socket.emit("register", storedUserId);
+          registerArea.classList.add("hidden");
+          chatArea.classList.remove("hidden");
+
+          // Fetch recipients for the stored user
+          fetchRecipients(storedUserId);
+        }
+      });
+    </script>
+  </body>
+</html>
