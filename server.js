@@ -115,7 +115,11 @@ admin.initializeApp({
 });
 
 // Connect to MongoDB
-mongoose.connect("mongodb://localhost/chatApp", {
+// mongoose.connect("mongodb://localhost/chatApp", {
+//   useNewUrlParser: true,
+//   useUnifiedTopology: true,
+// });
+mongoose.connect("mongodb+srv://pujakchetry55:TMuoSG7NTt7xO0vt@cluster0.wtv4j.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0", {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
